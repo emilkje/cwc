@@ -75,15 +75,14 @@ Need a more tailored experience? Try customizing your session. Use the `--includ
 cwc --help
 ```
 
-
 ## Roadmap 
 
 > Note: these items may or may not be implemented in the future.
 
 - [ ] tests
 - [ ] support both azure and openai credentials
-- [ ] `cwc login` command to set up credentials
-- [ ] CI/CD for releases
+- [x] `cwc login` command to set up credentials
+- [x] CI/CD for releases
 - [ ] chat using web ui with `cwc web`
 - [ ] indexing/search implementation for large codebases
 - [ ] tools for dynamic context awareness
