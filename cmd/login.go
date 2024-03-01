@@ -20,14 +20,18 @@ var (
 // Declaration of a new cobra command for login
 var loginCmd = &cobra.Command{
 	Use:   "login",
-	Short: "Authenticate with OpenAI and AzureOpenAI services",
-	Long: `Login will prompt you to enter your OpenAI or AzureOpenAI API key and other relevant information required for authentication. 
-Your credentials will be stored securely.`,
+	Short: "Authenticate with Azure OpenAI",
+	Long: `Login will prompt you to enter your Azure OpenAI API key and other relevant information required for authentication. 
+Your credentials will be stored securely in your keyring and will never be exposed on the file system directly.
+You can also pass the API key through stdin by using the '-' argument making the command non-interactive. For example:
+
+> echo $API_KEY | cwc login -e "https://my-deployment.openai.azure.com/" -v "2023-12-01-preview" -m "gpt-4-turbo" -
+`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// if the first argument is '-' or is empty, then we should read from stdin
 		var apiKey string
 		if len(args) == 0 {
-			ui.PrintMessage("Enter your OpenAI API Key: ", ui.MessageTypeInfo)
+			ui.PrintMessage("Enter your Azure OpenAI API Key: ", ui.MessageTypeInfo)
 			apiKey = config.SanitizeInput(ui.ReadUserInput())
 		} else if args[0] == "-" {
 			reader := cmd.InOrStdin()
@@ -41,16 +45,25 @@ Your credentials will be stored securely.`,
 		}
 
 		// Prompt for other required authentication details (endpoint, version, and deployment)
-		ui.PrintMessage("Enter the OpenAI API Endpoint: ", ui.MessageTypeInfo)
-		endpoint := config.SanitizeInput(ui.ReadUserInput())
+		endpoint := endpointFlag
+		apiVersion := apiVersionFlag
+		modelDeployment := modelDeploymentFlag
 
-		ui.PrintMessage("Enter the OpenAI API Version: ", ui.MessageTypeInfo)
-		apiVersion := config.SanitizeInput(ui.ReadUserInput())
+		if endpointFlag == "" {
+			ui.PrintMessage("Enter the Azure OpenAI API Endpoint: ", ui.MessageTypeInfo)
+			endpoint = config.SanitizeInput(ui.ReadUserInput())
+		}
 
-		ui.PrintMessage("Enter the OpenAI Model Deployment: ", ui.MessageTypeInfo)
-		modelDeployment := config.SanitizeInput(ui.ReadUserInput())
+		if apiVersionFlag == "" {
+			ui.PrintMessage("Enter the Azure OpenAI API Version: ", ui.MessageTypeInfo)
+			apiVersion = config.SanitizeInput(ui.ReadUserInput())
+		}
 
-		//TODO: save the credentials securely
+		if modelDeploymentFlag == "" {
+			ui.PrintMessage("Enter the Azure OpenAI Model Deployment: ", ui.MessageTypeInfo)
+			modelDeployment = config.SanitizeInput(ui.ReadUserInput())
+		}
+
 		cfg := config.NewConfig(endpoint, apiVersion, modelDeployment)
 		cfg.SetAPIKey(apiKey)
 
