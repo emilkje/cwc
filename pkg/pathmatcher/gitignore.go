@@ -46,9 +46,11 @@ func (g *GitignorePathMatcher) gitLsFiles() error {
 		return fmt.Errorf("error running git ls-files: %w", err)
 	}
 
-	for _, line := range strings.Split(buf.String(), "\n") {
-		g.ignoredPaths = append(g.ignoredPaths, line)
-	}
+	// create a slice of ignored paths and remove the last empty string
+	ignored := strings.Split(buf.String(), "\n")
+	ignored = ignored[:len(ignored)-1]
+
+	g.ignoredPaths = append(g.ignoredPaths, ignored...)
 
 	return nil
 }
