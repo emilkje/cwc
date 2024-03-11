@@ -8,7 +8,14 @@
 
 ## Overview
 
-Chat With Code is yet another command-line application that bridges the gap between coding and conversation. This tool lets developers engage with their codebases using natural language prompts, offering a fresh approach to code exploration and problem-solving.
+Chat With Code is yet another command-line application that bridges the gap between coding and conversation. This tool lets you engage with your codebases using natural language prompts, offering a fresh approach to code exploration and problem-solving.
+
+**Why does this tool exist?**
+
+I was frequently disappointed with Github Copilot's chat context discovery, as it often missed relevant files for accurate answers. 
+CWC improves this by allowing you to specify include and exclude patterns across your codebase, giving you complete control over 
+the context window during chats. Additionally, its terminal-based operation makes it independent of IDEs like VSCode, 
+enhancing flexibility with other text editors not natively supporting Github Copilot.
 
 ## Features
 
