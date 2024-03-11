@@ -82,6 +82,24 @@ Need a more tailored experience? Try customizing your session. Use the `--includ
 cwc --help
 ```
 
+## Example usage
+
+```sh
+# chat across all .go files
+cwc -i ".*.go"
+```
+
+```sh
+# chat with everything inside src/ except .tsx files
+cwc -x ".*.tsx" -p src
+```
+
+```sh
+# chat with a git diff
+git diff refA...refB > foo.diff
+cwc -i "foo.diff"
+```
+
 ## Roadmap 
 
 > Note: these items may or may not be implemented in the future.
