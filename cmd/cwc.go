@@ -4,10 +4,11 @@ import (
 	"context"
 	stderrors "errors"
 	"fmt"
+	"io"
+
 	"github.com/emilkje/cwc/pkg/pathmatcher"
 	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"
-	"io"
 
 	"github.com/emilkje/cwc/pkg/config"
 	"github.com/emilkje/cwc/pkg/errors"
@@ -186,10 +187,13 @@ If you have multiple files called 'main.go' for example, you can use the --paths
 
 		for {
 			req := openai.ChatCompletionRequest{
-				Model: openai.GPT4TurboPreview,
+				Model: config.Cfg.Model,
 				//MaxTokens: 4096,
 				Messages: messages,
 				Stream:   true,
+			}
+			if config.Cfg.Provider == "azure" && config.Cfg.Model == "" {
+				req.Model = openai.GPT4TurboPreview
 			}
 
 			ctx := context.Background()
@@ -247,7 +251,6 @@ If you have multiple files called 'main.go' for example, you can use the --paths
 }
 
 func init() {
-
 	CwcCmd.Flags().StringVarP(&includeFlag, "include", "i", ".*", "a regular expression to match files to include")
 	CwcCmd.Flags().StringVarP(&excludeFlag, "exclude", "x", "", "a regular expression to match files to exclude")
 	CwcCmd.Flags().StringSliceVarP(&pathsFlag, "paths", "p", []string{"."}, "a list of paths to search for files")

@@ -63,12 +63,24 @@ After installing Chat With Code, you're just a few steps away from a conversatio
     2. Authenticate securely using the following command:
 
          ```sh
+         # azure
          cwc login \
+           --provider "azure" \
            --api-key=$API_KEY \
            --endpoint "https://your-endpoint.openai.azure.com/" \
            --api-version "2023-12-01-preview" \
            --deployment-model "gpt-4-turbo"
          ```
+
+         ```sh
+         # openai (compatible)
+         cwc login \
+           --provider "openai" \
+           --api-key=$API_KEY \
+           --endpoint "http://localhost:11434" \
+           --api-version "v1" \
+           --model "codellama"
+         ```     
 
    > **Security Notice**: Never input your API key directly into the command-line arguments to prevent potential exposure in shell history and process listings. The API key is securely stored in your personal keyring.
 

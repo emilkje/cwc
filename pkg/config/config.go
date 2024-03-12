@@ -2,34 +2,44 @@ package config
 
 import (
 	"encoding/json"
-	"github.com/emilkje/cwc/pkg/errors"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/emilkje/cwc/pkg/errors"
+
 	"github.com/sashabaranov/go-openai"
 )
+
+var Cfg Config
 
 const (
 	configFileName = "cwc.json" // The name of the config file we want to save
 )
 
 func NewFromConfigFile() (openai.ClientConfig, error) {
-	cfg, err := LoadConfig()
+	Cfg, err := LoadConfig()
 	if err != nil {
 		return openai.ClientConfig{}, err
 	}
 
 	// validate the configuration
-	err = ValidateConfig(cfg)
+	err = ValidateConfig(Cfg)
 	if err != nil {
 		return openai.ClientConfig{}, err
 	}
 
-	config := openai.DefaultAzureConfig(cfg.APIKey(), cfg.Endpoint)
-	config.APIVersion = cfg.ApiVersion
-	config.AzureModelMapperFunc = func(model string) string {
-		return cfg.ModelDeployment
+	var config openai.ClientConfig
+	if Cfg.Provider == "azure" {
+		config = openai.DefaultAzureConfig(Cfg.APIKey(), Cfg.Endpoint)
+		config.APIVersion = Cfg.ApiVersion
+		config.AzureModelMapperFunc = func(model string) string {
+			return Cfg.ModelDeployment
+		}
+	}
+	if Cfg.Provider == "openai" {
+		config = openai.DefaultConfig(Cfg.apiKey)
+		config.BaseURL = Cfg.Endpoint + "/" + Cfg.ApiVersion
 	}
 
 	return config, nil
@@ -41,19 +51,23 @@ func SanitizeInput(input string) string {
 }
 
 type Config struct {
+	Provider        string `json:"provider"`
 	Endpoint        string `json:"endpoint"`
 	ApiVersion      string `json:"apiVersion"`
 	ModelDeployment string `json:"modelDeployment"`
+	Model           string `json:"model"`
 	// Keep APIKey unexported to avoid accidental exposure
 	apiKey string
 }
 
 // NewConfig creates a new Config object
-func NewConfig(endpoint, apiVersion, modelDeployment string) *Config {
+func NewConfig(provider, endpoint, apiVersion, modelDeployment, model string) *Config {
 	return &Config{
+		Provider:        provider,
 		Endpoint:        endpoint,
 		ApiVersion:      apiVersion,
 		ModelDeployment: modelDeployment,
+		Model:           model,
 	}
 }
 
@@ -67,10 +81,28 @@ func (c *Config) APIKey() string {
 	return c.apiKey
 }
 
+var SupportedProviders = []string{
+	"azure",
+	"openai",
+}
+
 // ValidateConfig checks if a Config object has valid data.
 func ValidateConfig(c *Config) error {
-	var validationErrors []string
 
+	var validationErrors []string
+	if c.Provider == "" {
+		validationErrors = append(validationErrors, "provider must be provided and not be empty")
+	}
+
+	supportedProviderFound := false
+	for _, supportedProvider := range SupportedProviders {
+		if c.Provider == supportedProvider {
+			supportedProviderFound = true
+		}
+	}
+	if !supportedProviderFound {
+		validationErrors = append(validationErrors, "provider not supported")
+	}
 	if c.APIKey() == "" {
 		validationErrors = append(validationErrors, "apiKey must be provided and not be empty")
 	}
@@ -83,8 +115,16 @@ func ValidateConfig(c *Config) error {
 		validationErrors = append(validationErrors, "apiVersion must be provided and not be empty")
 	}
 
-	if c.ModelDeployment == "" {
-		validationErrors = append(validationErrors, "modelDeployment must be provided and not be empty")
+	if c.Provider == "azure" {
+		if c.ModelDeployment == "" {
+			validationErrors = append(validationErrors, "modelDeployment must be provided and not be empty")
+		}
+	}
+
+	if c.Provider == "openai" {
+		if c.Model == "" {
+			validationErrors = append(validationErrors, "model must be provided and not be empty")
+		}
 	}
 
 	if len(validationErrors) > 0 {
@@ -138,8 +178,7 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	var cfg Config
-	err = json.Unmarshal(data, &cfg)
+	err = json.Unmarshal(data, &Cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -149,9 +188,9 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	cfg.SetAPIKey(apiKey)
+	Cfg.SetAPIKey(apiKey)
 
-	return &cfg, nil
+	return &Cfg, nil
 }
 
 func ClearConfig() error {
