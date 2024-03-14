@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	stderrors "errors"
 	"fmt"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"github.com/sashabaranov/go-openai"
 	"github.com/spf13/cobra"
 
+	"github.com/emilkje/cwc/pkg/chat"
 	"github.com/emilkje/cwc/pkg/config"
 	"github.com/emilkje/cwc/pkg/errors"
 	"github.com/emilkje/cwc/pkg/filetree"
@@ -67,10 +67,18 @@ func CreateRootCommand() *cobra.Command {
 			if isPiped(os.Stdin) {
 				// stdin is not a terminal, typically piped from another command
 				if len(args) == 0 {
-					return errors.NoPromptProvidedError{Message: "prompt is required when reading context from stdin"}
+					return &errors.NoPromptProvidedError{Message: "no prompt provided"}
 				}
 
-				return nonInteractive(args[0])
+				var systemContext string
+
+				inputBytes, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					return fmt.Errorf("error reading from stdin: %w", err)
+				}
+				systemContext = string(inputBytes)
+
+				return nonInteractive(systemContext, args[0])
 			}
 
 			gatherOpts := &chatOptions{
@@ -139,7 +147,7 @@ func isPiped(file *os.File) bool {
 }
 
 func interactiveChat(c *cobra.Command, args []string, gatherOpts *chatOptions, loginCmd *cobra.Command) error {
-	_, err := config.NewFromConfigFile()
+	cfg, err := config.NewFromConfigFile()
 	if err != nil {
 		var validationErr errors.ConfigValidationError
 		if !stderrors.As(err, &validationErr) {
@@ -161,11 +169,6 @@ func interactiveChat(c *cobra.Command, args []string, gatherOpts *chatOptions, l
 		if err != nil {
 			return fmt.Errorf("error logging in: %w", err)
 		}
-	}
-
-	cfg, err := config.NewFromConfigFile()
-	if err != nil {
-		return fmt.Errorf("error reading config: %w", err)
 	}
 
 	client := openai.NewClientWithConfig(cfg)
@@ -202,25 +205,22 @@ func interactiveChat(c *cobra.Command, args []string, gatherOpts *chatOptions, l
 		}
 	}
 
+	// confirm with the user that the files are correct
 	if !ui.AskYesNo("Do you wish to proceed?", true) {
 		ui.PrintMessage("See ya later!", ui.MessageTypeInfo)
 		return nil
 	}
 
-	contextStr := "Context:\n\n"
-	contextStr += "## File tree\n\n"
+	contextStr := "File tree:\n\n"
 	contextStr += "```\n" + fileTree + "```\n\n"
-	contextStr += "## File contents\n\n"
+	contextStr += "File contents:\n\n"
 
 	for _, file := range files {
 		// find extension by splitting on ".". if no extension, use
 		contextStr += fmt.Sprintf("./%s\n```%s\n%s\n```\n\n", file.Path, file.Type, file.Data)
 	}
 
-	systemMessage := "You are a helpful coding assistant. " +
-		"Below you will find relevant context to answer the user's question.\n\n" +
-		contextStr + "\n\n" +
-		"Please follow the users instructions, you can do this!"
+	systemMessage := createSystemMessageFromContext(contextStr)
 
 	ui.PrintMessage("Type '/exit' to end the chat.\n", ui.MessageTypeNotice)
 
@@ -237,132 +237,57 @@ func interactiveChat(c *cobra.Command, args []string, gatherOpts *chatOptions, l
 		return nil
 	}
 
-	messages := []openai.ChatCompletionMessage{
-		{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: systemMessage,
-		},
-		{
-			Role:    openai.ChatMessageRoleUser,
-			Content: initialUserMessage,
-		},
-	}
+	chatInstance := chat.NewChat(client, systemMessage, printMessageChunk)
+	conversation := chatInstance.BeginConversation(initialUserMessage)
 
 	for {
-		req := openai.ChatCompletionRequest{
-			Model: openai.GPT4TurboPreview,
-			// MaxTokens: 4096,
-			Messages: messages,
-			Stream:   true,
-		}
+		conversation.WaitMyTurn()
+		ui.PrintMessage("👤: ", ui.MessageTypeInfo)
 
-		stream, err := client.CreateChatCompletionStream(context.Background(), req)
-		if err != nil {
-			return fmt.Errorf("error creating chat completion stream: %w", err)
-		}
+		userMessage := ui.ReadUserInput()
 
-		messageStr := ""
-
-		ui.PrintMessage("🤖: ", ui.MessageTypeInfo)
-	answer:
-		for {
-			response, err := stream.Recv()
-			if stderrors.Is(err, io.EOF) {
-				break answer
-			}
-
-			if err != nil {
-				return fmt.Errorf("error reading response: %w", err)
-			}
-
-			if len(response.Choices) == 0 {
-				continue answer
-			}
-
-			messageStr = response.Choices[0].Delta.Content
-			ui.PrintMessage(response.Choices[0].Delta.Content, ui.MessageTypeInfo)
-		}
-
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleAssistant,
-			Content: messageStr,
-		})
-
-		// read user input until newline
-		ui.PrintMessage("\n👤: ", ui.MessageTypeInfo)
-		userInput := ui.ReadUserInput()
-
-		// check for slash commands
-		if userInput == "/exit" {
+		if userMessage == "/exit" {
 			break
 		}
 
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleUser,
-			Content: userInput,
-		})
-
-		// close the stream for the current request
-		stream.Close()
+		conversation.Reply(userMessage)
 	}
 
 	return nil
 }
 
-func nonInteractive(prompt string) error {
-	var systemContext string
-
-	inputBytes, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		return fmt.Errorf("error reading from stdin: %w", err)
+func printMessageChunk(chunk *chat.ConversationChunk) {
+	if chunk.IsInitialChunk {
+		ui.PrintMessage("🤖: ", ui.MessageTypeInfo)
+		return
 	}
 
-	systemContext = string(inputBytes)
+	if chunk.IsErrorChunk {
+		ui.PrintMessage(chunk.Content, ui.MessageTypeError)
+	}
 
+	if chunk.IsFinalChunk {
+		ui.PrintMessage("\n", ui.MessageTypeInfo)
+	}
+
+	ui.PrintMessage(chunk.Content, ui.MessageTypeInfo)
+}
+
+func nonInteractive(systemMessage string, prompt string) error {
 	cfg, err := config.NewFromConfigFile()
 	if err != nil {
 		return fmt.Errorf("error reading config: %w", err)
 	}
 
 	client := openai.NewClientWithConfig(cfg)
-	systemMessage := createSystemMessageFromContext(systemContext)
 
-	messages := []openai.ChatCompletionMessage{
-		{Role: openai.ChatMessageRoleSystem, Content: systemMessage},
-		{Role: openai.ChatMessageRoleUser, Content: prompt},
+	onChunk := func(chunk *chat.ConversationChunk) {
+		ui.PrintMessage(chunk.Content, ui.MessageTypeInfo)
 	}
+	chatInstance := chat.NewChat(client, systemMessage, onChunk)
+	conversation := chatInstance.BeginConversation(prompt)
 
-	req := openai.ChatCompletionRequest{
-		Model: openai.GPT4TurboPreview,
-		// MaxTokens: 4096,
-		Messages: messages,
-		Stream:   true,
-	}
-
-	stream, err := client.CreateChatCompletionStream(context.Background(), req)
-	if err != nil {
-		return fmt.Errorf("error creating chat completion stream: %w", err)
-	}
-
-	defer stream.Close()
-
-answer:
-	for {
-		response, err := stream.Recv()
-		if stderrors.Is(err, io.EOF) {
-			break answer
-		}
-
-		if err != nil {
-			return fmt.Errorf("error reading response: %w", err)
-		}
-
-		if len(response.Choices) == 0 {
-			continue answer
-		}
-
-		ui.PrintMessage(response.Choices[0].Delta.Content, ui.MessageTypeInfo)
-	}
+	conversation.WaitMyTurn()
 
 	return nil
 }
