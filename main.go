@@ -2,18 +2,18 @@ package main
 
 import (
 	"fmt"
-	"github.com/emilkje/cwc/pkg/ui"
 	"os"
 
 	"github.com/emilkje/cwc/cmd"
+	"github.com/emilkje/cwc/pkg/ui"
 )
 
 //go:generate ./bin/lang-gen
 
 func main() {
+	command := cmd.CreateRootCommand()
 
-	err := cmd.CwcCmd.Execute()
-
+	err := command.Execute()
 	if err != nil {
 		ui.PrintMessage(fmt.Sprintf("Error: %s\n", err), ui.MessageTypeError)
 		os.Exit(1)
@@ -21,7 +21,7 @@ func main() {
 }
 
 //
-//func Execute(defCmd string) error {
+// func Execute(defCmd string) error {
 //	var cmdFound bool
 //	commands := cmd.RootCmd.Commands()
 //
