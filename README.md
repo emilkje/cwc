@@ -1,5 +1,7 @@
 # Chat With Code
 
+⚠️ Archived: This repository is moved to [intility/cwc](https://github.com/intility/cwc)
+
 <div align="center">
   <a href="https://github.com/emilkje/go-openai-toolkit">
     <img src="docs/assets/yelling_at_code.webp" alt="Logo">
